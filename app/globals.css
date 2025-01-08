@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    transition: none !important;
+  }
+
+  *[class*="text-"], *[class*="bg-"] {
+    transition: color 50ms linear,
+                background-color 50ms linear !important;
+  }
+
+  body {
+    @apply antialiased;
+  }
+}
+
+/* Add smooth animation to theme switch icon */
+.theme-switch-icon {
+  @apply transition-transform duration-100;
+}
+
+[data-theme="dark"] .theme-switch-icon {
+  @apply rotate-0;
+}
+
+[data-theme="light"] .theme-switch-icon {
+  @apply rotate-90;
+}
