@@ -8,13 +8,15 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
   fetchSignInMethodsForEmail,
-  linkWithPopup
+  linkWithPopup,
+  updatePassword
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase/firebase';
+import { auth, db } from '@/lib/firebase/firebase';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
-import { getDoc, doc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/firebase';
+import { getDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { ChangePasswordModal } from '@/components/modals/change-password-modal';
+import { LinkGoogleModal } from '@/components/modals/link-google-modal';
 
 const AuthContext = createContext({});
 
@@ -31,47 +33,125 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showLinkGoogleModal, setShowLinkGoogleModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [userRole, setUserRole] = useState(null);
   const router = useRouter();
 
   useEffect(() => {
+    console.log("Setting up auth state listener");
+    
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("Auth state changed:", user ? "User logged in" : "No user");
       setUser(user);
       
       if (user) {
-        // Check user role
         try {
+          console.log("Fetching user document for:", user.uid);
           const userDoc = await getDoc(doc(db, 'users', user.uid));
+          
           if (userDoc.exists()) {
-            setUserRole(userDoc.data().role);
+            const userData = userDoc.data();
+            console.log("User data:", {
+              role: userData.role,
+              firstAccess: userData.firstAccess,
+              email: userData.email
+            });
+            
+            setUserRole(userData.role);
+            
+            if (userData.firstAccess) {
+              console.log("First access detected, showing password modal");
+              setShowPasswordModal(true);
+            } else {
+              console.log("Checking Google provider");
+              const providers = user.providerData.map(provider => provider.providerId);
+              console.log("User providers:", providers);
+              
+              if (!providers.includes('google.com')) {
+                console.log("No Google provider found, showing link modal");
+                setShowLinkGoogleModal(true);
+              }
+            }
           } else {
+            console.warn("No user document found!");
             setUserRole(null);
           }
         } catch (error) {
-          console.error('Error fetching user role:', error);
+          console.error('Error fetching user data:', error);
           setUserRole(null);
         }
-
-        // Check Google provider
-        const providers = user.providerData.map(provider => provider.providerId);
-        if (!providers.includes('google.com')) {
-          setShowLinkGoogleModal(true);
-        }
       } else {
+        console.log("Resetting user state");
         setUserRole(null);
+        setShowPasswordModal(false);
+        setShowLinkGoogleModal(false);
       }
       
       setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      console.log("Cleaning up auth state listener");
+      unsubscribe();
+    };
   }, []);
 
   const signIn = async (email, password) => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      console.log("Attempting sign in for:", email);
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      console.log("Sign in successful");
+      
+      // Force fetch user data after sign in
+      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        console.log("Post-login user data:", userData);
+        
+        if (userData.firstAccess) {
+          console.log("Setting showPasswordModal to true");
+          setShowPasswordModal(true);
+        }
+      }
+      
       router.replace('/dashboard');
     } catch (error) {
+      console.error("Sign in error:", error);
+      throw error;
+    }
+  };
+
+  const handlePasswordChange = async (newPassword) => {
+    try {
+      console.log("Starting password change process");
+      if (!user) throw new Error('Usuário não autenticado');
+
+      // Change password in Firebase Auth
+      await updatePassword(user, newPassword);
+      console.log("Password updated in Firebase Auth");
+
+      // Update firstAccess in Firestore
+      await updateDoc(doc(db, 'users', user.uid), {
+        firstAccess: false,
+        updatedAt: serverTimestamp()
+      });
+      console.log("FirstAccess updated in Firestore");
+
+      setShowPasswordModal(false);
+
+      // After password change, check if we need to show Google modal
+      const providers = user.providerData.map(provider => provider.providerId);
+      console.log("Current providers:", providers);
+      
+      if (!providers.includes('google.com')) {
+        console.log("Showing Google link modal");
+        setShowLinkGoogleModal(true);
+      }
+
+      toast.success('Senha alterada com sucesso!');
+    } catch (error) {
+      console.error('Error changing password:', error);
+      toast.error('Erro ao alterar senha: ' + error.message);
       throw error;
     }
   };
@@ -136,13 +216,32 @@ export function AuthProvider({ children }) {
       signInWithGoogle, 
       signOut,
       showLinkGoogleModal,
+      showPasswordModal,
       handleLinkGoogle,
+      handlePasswordChange,
       dismissLinkGoogleModal: () => setShowLinkGoogleModal(false),
+      dismissPasswordModal: () => setShowPasswordModal(false),
       userRole
     }}>
       {children}
+      <ChangePasswordModal 
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+        onSubmit={handlePasswordChange}
+      />
+      <LinkGoogleModal 
+        isOpen={showLinkGoogleModal}
+        onClose={() => setShowLinkGoogleModal(false)}
+        onConfirm={handleLinkGoogle}
+      />
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthContext); 
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}; 

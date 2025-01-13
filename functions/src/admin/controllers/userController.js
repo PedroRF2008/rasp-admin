@@ -82,6 +82,31 @@ const userController = {
     } catch (error) {
       res.status(500).json({ error: error.message });
     }
+  },
+
+  changePassword: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { password } = req.body;
+
+      // Update user password
+      await getAuth().updateUser(id, {
+        password: password
+      });
+
+      // Update firstAccess status
+      await getFirestore()
+        .collection('users')
+        .doc(id)
+        .update({
+          firstAccess: false,
+          updatedAt: new Date()
+        });
+
+      res.status(200).json({ message: 'Password changed successfully' });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   }
 };
 

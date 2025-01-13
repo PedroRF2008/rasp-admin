@@ -21,16 +21,32 @@ service cloud.firestore {
       return isAdmin() || isOperator();
     }
 
+    // Validate operator device updates
+    function isValidOperatorDeviceUpdate(data) {
+      return data.diff(resource.data).affectedKeys().hasOnly(['needsReboot', 'needsSync', 'updatedAt']);
+    }
+
+    // Validate operator group updates
+    function isValidOperatorGroupUpdate(data) {
+      return data.diff(resource.data).affectedKeys().hasOnly(['media', 'updatedAt']);
+    }
+
     // Users collection
     match /users/{userId} {
-      allow read: if isAuthenticated() && request.auth.uid == userId;
-      allow write: if isAdmin();
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow update: if isAdmin() || 
+        (isAuthenticated() && 
+         request.auth.uid == userId && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['firstAccess', 'updatedAt']));
+      allow create, delete: if isAdmin();
     }
 
     // Groups collection
     match /groups/{groupId} {
       allow read: if hasAnyRole();
-      allow create, update: if hasAnyRole();
+      allow create: if isAdmin();
+      allow update: if isAdmin() || 
+        (isOperator() && isValidOperatorGroupUpdate(request.resource.data));
       allow delete: if isAdmin();
     }
 
@@ -38,7 +54,8 @@ service cloud.firestore {
     match /devices/{deviceId} {
       allow read: if hasAnyRole();
       allow create: if isAdmin();
-      allow update: if hasAnyRole();
+      allow update: if isAdmin() || 
+        (isOperator() && isValidOperatorDeviceUpdate(request.resource.data));
       allow delete: if isAdmin();
     }
 

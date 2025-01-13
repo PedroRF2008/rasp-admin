@@ -17,6 +17,15 @@ initializeApp();
 // Admin API endpoint
 exports.admin = onRequest({ 
   region: "us-central1",
-  cors: true,
+  cors: {
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'https://kiosk.digitro.com'
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+  },
   maxInstances: 10
 }, adminRouter);
