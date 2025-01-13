@@ -189,15 +189,6 @@ export default function DashboardPage() {
                   >
                     Conteúdo
                   </Button>
-                  <Tooltip content="Sincronizar dispositivos">
-                    <Button 
-                      isIconOnly
-                      variant="flat"
-                      color="secondary"
-                    >
-                      <Icon icon="solar:refresh-circle-bold" width={24} />
-                    </Button>
-                  </Tooltip>
                   <Dropdown>
                     <DropdownTrigger>
                       <Button 
@@ -263,11 +254,6 @@ export default function DashboardPage() {
                           </Button>
                         </DropdownTrigger>
                         <DropdownMenu aria-label="Opções do dispositivo">
-                          <DropdownItem
-                            startContent={<Icon icon="solar:add-square-bold" />}
-                          >
-                            Adicionar conteúdo personalizado
-                          </DropdownItem>
                           <DropdownItem
                             startContent={<Icon icon="solar:pen-bold" />}
                             onClick={() => router.push(`/devices?action=edit&id=${device.id}`)}

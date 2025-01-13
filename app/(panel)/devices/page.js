@@ -15,6 +15,7 @@ import {
   Select,
   SelectItem,
   useDisclosure,
+  Tooltip,
 } from "@nextui-org/react";
 import { Icon } from "@iconify/react";
 import { 
@@ -22,19 +23,49 @@ import {
   subscribeToDevices,
   addDevice,
   updateDevice,
-  removeDevice 
+  removeDevice,
+  triggerDeviceSync,
+  triggerDeviceReboot
 } from "@/lib/firebase/collections";
 import { useSearchParams } from "next/navigation";
 import toast from "react-hot-toast";
 import { DeviceModal } from "@/components/modals/device-modal";
 import { ConfirmModal } from "@/components/modals/confirm-modal";
 import { LoadingContent } from "@/components/loading";
+import { DeviceIDModal } from "@/components/modals/device-id-modal";
+import { DeviceDiagnosticsModal } from "@/components/modals/device-diagnostics-modal";
 
 const statusConfig = {
-  online: { color: "success", icon: "solar:check-circle-bold", text: "Online" },
-  offline: { color: "danger", icon: "solar:close-circle-bold", text: "Offline" },
-  updating: { color: "warning", icon: "solar:refresh-circle-bold", text: "Atualizando" },
-  error: { color: "danger", icon: "solar:danger-circle-bold", text: "Erro" },
+  online: { 
+    color: "success", 
+    icon: "solar:check-circle-bold", 
+    text: "Online" 
+  },
+  offline: { 
+    color: "danger", 
+    icon: "solar:close-circle-bold", 
+    text: "Offline" 
+  },
+  rebooting: { 
+    color: "warning", 
+    icon: "solar:restart-bold", 
+    text: "Reiniciando" 
+  },
+  syncing: { 
+    color: "primary", 
+    icon: "solar:refresh-circle-bold-duotone", 
+    text: "Sincronizando" 
+  },
+  unknown: { 
+    color: "default", 
+    icon: "solar:question-circle-bold", 
+    text: "Desconhecido" 
+  }
+};
+
+// Helper function to check if device is in an active state
+const isDeviceActive = (status) => {
+  return status === 'online';
 };
 
 export default function DevicesPage() {
@@ -63,12 +94,35 @@ export default function DevicesPage() {
   const [confirmAction, setConfirmAction] = useState(null);
   const [confirmData, setConfirmData] = useState(null);
 
+  // Device ID Modal
+  const {
+    isOpen: isDeviceIdModalOpen,
+    onOpen: openDeviceIdModal,
+    onClose: closeDeviceIdModal
+  } = useDisclosure();
+  const [newDeviceId, setNewDeviceId] = useState(null);
+
+  // Diagnostics Modal
+  const {
+    isOpen: isDiagnosticsModalOpen,
+    onOpen: openDiagnosticsModal,
+    onClose: closeDiagnosticsModal
+  } = useDisclosure();
+  const [selectedDevice, setSelectedDevice] = useState(null);
+
   useEffect(() => {
     const unsubscribeGroups = subscribeToGroups((updatedGroups) => {
       setGroups(updatedGroups);
     });
 
     const unsubscribeDevices = subscribeToDevices((updatedDevices) => {
+      // Add debug logging for each device
+      console.log('=== Devices Documents ===');
+      updatedDevices.forEach(device => {
+        console.log(`Device: ${device.name}`, device);
+      });
+      console.log('=======================');
+      
       setDevices(updatedDevices);
       setLoading(false);
     });
@@ -110,11 +164,18 @@ export default function DevicesPage() {
       if (editingDevice) {
         await updateDevice(editingDevice.id, data);
         toast.success('Dispositivo atualizado com sucesso!');
+        closeDeviceModal();
       } else {
-        await addDevice(data);
-        toast.success('Dispositivo adicionado com sucesso!');
+        const deviceId = await addDevice({
+          ...data,
+          status: 'offline',
+          needsSync: false,
+        });
+        toast.success('Dispositivo criado com sucesso!');
+        setNewDeviceId(deviceId);
+        closeDeviceModal();
+        openDeviceIdModal();
       }
-      closeDeviceModal();
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -142,6 +203,37 @@ export default function DevicesPage() {
   const handleEditDevice = (device) => {
     setEditingDevice(device);
     openDeviceModal();
+  };
+
+  const handleOpenDiagnostics = (device) => {
+    setSelectedDevice(device);
+    openDiagnosticsModal();
+  };
+
+  const handleDeviceSync = async (deviceId) => {
+    try {
+      await triggerDeviceSync(deviceId);
+      toast.success('Sincronização iniciada');
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const handleDeviceReboot = (deviceId) => {
+    setConfirmAction(() => async () => {
+      try {
+        await triggerDeviceReboot(deviceId);
+        toast.success('Reinicialização iniciada');
+        closeConfirmModal();
+      } catch (error) {
+        toast.error(error.message);
+      }
+    });
+    setConfirmData({
+      title: "Reiniciar Dispositivo",
+      message: "Tem certeza que deseja reiniciar este dispositivo? O conteúdo ficará indisponível durante o processo."
+    });
+    openConfirmModal();
   };
 
   const filteredDevices = devices.filter(device => {
@@ -213,12 +305,12 @@ export default function DevicesPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Chip
-                        color={statusConfig[device.status].color}
+                        color={statusConfig[device.status || 'unknown'].color}
                         variant="flat"
                         size="sm"
-                        startContent={<Icon icon={statusConfig[device.status].icon} />}
+                        startContent={<Icon icon={statusConfig[device.status || 'unknown'].icon} />}
                       >
-                        {statusConfig[device.status].text}
+                        {statusConfig[device.status || 'unknown'].text}
                       </Chip>
                       <Chip
                         variant="flat"
@@ -230,21 +322,70 @@ export default function DevicesPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 self-end sm:self-auto">
-                    <Button
-                      isIconOnly
-                      variant="light"
-                      onPress={() => handleEditDevice(device)}
-                    >
-                      <Icon icon="solar:pen-bold" width={20} />
-                    </Button>
-                    <Button
-                      isIconOnly
-                      color="danger"
-                      variant="light"
-                      onPress={() => handleDeleteDevice(device.id)}
-                    >
-                      <Icon icon="solar:trash-bin-trash-bold" width={20} />
-                    </Button>
+                    <Tooltip content="Sincronizar conteúdo">
+                      <Chip
+                        variant="flat"
+                        color="primary"
+                        className="cursor-pointer"
+                        startContent={<Icon icon="solar:refresh-circle-bold" width={20} />}
+                        onClick={() => handleDeviceSync(device.id)}
+                        isDisabled={!isDeviceActive(device.status)}
+                      >
+                        Sincronizar
+                      </Chip>
+                    </Tooltip>
+
+                    <Tooltip content="Reiniciar dispositivo">
+                      <Chip
+                        variant="flat"
+                        color="warning"
+                        className="cursor-pointer"
+                        startContent={<Icon icon="solar:restart-bold" width={20} />}
+                        onClick={() => handleDeviceReboot(device.id)}
+                        isDisabled={!isDeviceActive(device.status)}
+                      >
+                        Reiniciar
+                      </Chip>
+                    </Tooltip>
+
+                    <Tooltip content="Ver diagnóstico">
+                      <Chip
+                        variant="flat"
+                        color="secondary"
+                        className="cursor-pointer"
+                        startContent={<Icon icon="solar:chart-bold" width={20} />}
+                        onClick={() => handleOpenDiagnostics(device)}
+                      >
+                        Diagnóstico
+                      </Chip>
+                    </Tooltip>
+
+                    <Dropdown>
+                      <DropdownTrigger>
+                        <Button
+                          isIconOnly
+                          variant="light"
+                        >
+                          <Icon icon="solar:menu-dots-bold" width={20} />
+                        </Button>
+                      </DropdownTrigger>
+                      <DropdownMenu aria-label="Ações do dispositivo">
+                        <DropdownItem
+                          startContent={<Icon icon="solar:pen-bold" />}
+                          onClick={() => handleEditDevice(device)}
+                        >
+                          Editar
+                        </DropdownItem>
+                        <DropdownItem
+                          startContent={<Icon icon="solar:trash-bin-trash-bold" />}
+                          className="text-danger"
+                          color="danger"
+                          onClick={() => handleDeleteDevice(device.id)}
+                        >
+                          Remover
+                        </DropdownItem>
+                      </DropdownMenu>
+                    </Dropdown>
                   </div>
                 </div>
               ))}
@@ -280,6 +421,18 @@ export default function DevicesPage() {
         title={confirmData?.title}
         message={confirmData?.message}
         isLoading={modalLoading}
+      />
+
+      <DeviceIDModal 
+        isOpen={isDeviceIdModalOpen}
+        onClose={closeDeviceIdModal}
+        deviceId={newDeviceId}
+      />
+
+      <DeviceDiagnosticsModal 
+        isOpen={isDiagnosticsModalOpen}
+        onClose={closeDiagnosticsModal}
+        device={selectedDevice}
       />
     </div>
   );

@@ -17,7 +17,7 @@ export default function Component() {
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace('/admin');
+      router.replace('/dashboard');
     }
   }, [user, loading, router]);
 
@@ -40,7 +40,7 @@ export default function Component() {
     try {
       await signIn(email, password);
       toast.success('Login realizado com sucesso!', { id: toastId });
-      router.replace("/admin");
+      router.replace("/dashboard");
     } catch (error) {
       let errorMessage = 'Credenciais inválidas. Por favor, tente novamente.';
       
@@ -65,7 +65,7 @@ export default function Component() {
     try {
       await signInWithGoogle();
       toast.success('Login realizado com sucesso!', { id: toastId });
-      router.replace("/admin");
+      router.replace("/dashboard");
     } catch (error) {
       let errorMessage = 'Erro ao entrar com Google. Por favor, tente novamente.';
       

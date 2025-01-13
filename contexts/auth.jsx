@@ -12,8 +12,9 @@ import {
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase/firebase';
 import { useRouter } from 'next/navigation';
-import { useDisclosure } from "@nextui-org/react";
-import { NetworkModal } from "@/components/modals/network-modal";
+import { toast } from 'react-hot-toast';
+import { getDoc, doc } from 'firebase/firestore';
+import { db } from '@/lib/firebase/firebase';
 
 const AuthContext = createContext({});
 
@@ -29,23 +30,38 @@ const getInitialState = () => {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showLinkGoogleModal, setShowLinkGoogleModal] = useState(false);
+  const [userRole, setUserRole] = useState(null);
   const router = useRouter();
 
-  // Network Modal
-  const {
-    isOpen: isNetworkModalOpen,
-    onOpen: openNetworkModal,
-    onClose: closeNetworkModal
-  } = useDisclosure();
-
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
-      setLoading(false);
-
+      
       if (user) {
-        openNetworkModal(); // Show network modal after successful login
+        // Check user role
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            setUserRole(userDoc.data().role);
+          } else {
+            setUserRole(null);
+          }
+        } catch (error) {
+          console.error('Error fetching user role:', error);
+          setUserRole(null);
+        }
+
+        // Check Google provider
+        const providers = user.providerData.map(provider => provider.providerId);
+        if (!providers.includes('google.com')) {
+          setShowLinkGoogleModal(true);
+        }
+      } else {
+        setUserRole(null);
       }
+      
+      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -96,10 +112,35 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Add this function to handle Google account linking
+  const handleLinkGoogle = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      await linkWithPopup(auth.currentUser, provider);
+      setShowLinkGoogleModal(false);
+      toast.success('Conta Google vinculada com sucesso!');
+    } catch (error) {
+      if (error.code === 'auth/credential-already-in-use') {
+        toast.error('Esta conta Google já está vinculada a outro usuário.');
+      } else {
+        toast.error('Erro ao vincular conta Google. Tente novamente.');
+      }
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signInWithGoogle, signOut }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      loading, 
+      signIn, 
+      signInWithGoogle, 
+      signOut,
+      showLinkGoogleModal,
+      handleLinkGoogle,
+      dismissLinkGoogleModal: () => setShowLinkGoogleModal(false),
+      userRole
+    }}>
       {children}
-      <NetworkModal isOpen={isNetworkModalOpen} onClose={closeNetworkModal} />
     </AuthContext.Provider>
   );
 }

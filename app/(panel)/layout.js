@@ -5,10 +5,10 @@ import {
   Navbar,
   NavbarBrand,
   NavbarContent,
-  NavbarItem,
   NavbarMenu,
   NavbarMenuItem,
   NavbarMenuToggle,
+  NavbarItem,
   Button,
   Dropdown,
   DropdownTrigger,
@@ -23,32 +23,54 @@ import { useTheme } from "next-themes";
 import { usePathname, useRouter } from "next/navigation";
 import { LoadingPage } from "@/components/loading";
 import NextLink from "next/link";
+import { LinkGoogleModal } from "@/components/modals/link-google-modal";
 
-const navigation = [
-  {
-    name: "Dashboard",
-    href: "/dashboard",
-    icon: "solar:home-2-bold"
-  },
-  {
-    name: "Dispositivos",
-    href: "/devices",
-    icon: "solar:devices-bold"
-  },
-  {
-    name: "Conteúdo",
-    href: "/content",
-    icon: "solar:playlist-bold"
-  }
-];
+const navigation = {
+  admin: [
+    {
+      name: "Dashboard",
+      href: "/dashboard",
+      icon: "solar:home-2-bold"
+    },
+    {
+      name: "Dispositivos",
+      href: "/devices",
+      icon: "solar:devices-bold"
+    },
+    {
+      name: "Conteúdo",
+      href: "/content",
+      icon: "solar:playlist-bold"
+    },
+    {
+      name: "Usuários",
+      href: "/users",
+      icon: "solar:users-group-rounded-bold"
+    }
+  ],
+  operator: [
+    {
+      name: "Dashboard",
+      href: "/dashboard",
+      icon: "solar:home-2-bold"
+    },
+    {
+      name: "Conteúdo",
+      href: "/content",
+      icon: "solar:playlist-bold"
+    }
+  ]
+};
 
 export default function PanelLayout({ children }) {
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, showLinkGoogleModal, handleLinkGoogle, dismissLinkGoogleModal, userRole } = useAuth();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [unauthorizedAccess, setUnauthorizedAccess] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -60,6 +82,18 @@ export default function PanelLayout({ children }) {
     }
   }, [loading, user, router]);
 
+  // Redirect if no role or on restricted page
+  useEffect(() => {
+    if (!loading && user && userRole !== null) {
+      const allowedPaths = navigation[userRole]?.map(item => item.href) || [];
+      if (!allowedPaths.includes(pathname)) {
+        setUnauthorizedAccess(true);
+      } else {
+        setUnauthorizedAccess(false);
+      }
+    }
+  }, [loading, user, userRole, pathname]);
+
   if (!mounted || loading) {
     return <LoadingPage />;
   }
@@ -68,6 +102,53 @@ export default function PanelLayout({ children }) {
     return null;
   }
 
+  // Show error message if no role or unauthorized access
+  if (userRole === null || unauthorizedAccess) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="max-w-md text-center">
+          <Icon icon="solar:shield-cross-bold" className="text-6xl text-danger mx-auto mb-4" />
+          <h1 className="text-2xl font-bold mb-2">Acesso Negado</h1>
+          <p className="text-default-500 mb-4">
+            {userRole === null 
+              ? "Sua conta não possui as permissões necessárias para acessar o sistema."
+              : "Você não tem permissão para acessar esta página."
+            }
+            {" "}Entre em contato com um administrador.
+          </p>
+          {userRole === null ? (
+            <Button 
+              color="primary" 
+              variant="flat"
+              onPress={() => signOut()}
+            >
+              Voltar para Login
+            </Button>
+          ) : (
+            <Button 
+              color="primary" 
+              variant="flat"
+              onPress={() => router.replace('/dashboard')}
+            >
+              Voltar para Dashboard
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const currentNavigation = navigation[userRole] || [];
+
+  const handleConfirm = async () => {
+    setIsLoading(true);
+    try {
+      await handleLinkGoogle();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar
@@ -75,6 +156,7 @@ export default function PanelLayout({ children }) {
           base: "bg-background",
           wrapper: "px-4 sm:px-6",
           item: "data-[active=true]:text-primary data-[active=true]:font-medium",
+          content: "h-full",
         }}
         height="60px"
       >
@@ -82,36 +164,21 @@ export default function PanelLayout({ children }) {
           <NavbarMenuToggle className="mr-2 h-6 sm:hidden" />
           <Logo />
         </NavbarBrand>
-        <div className="flex-1 flex justify-center">
-          <NavbarContent
-            className="hidden h-12 gap-4 rounded-full bg-default-100 px-4 sm:flex"
-          >
-            <NavbarItem isActive={pathname === "/dashboard"}>
-              <NextLink 
-                className={`flex gap-2 ${pathname === "/dashboard" ? "text-primary" : "text-foreground"}`}
-                href="/dashboard"
-              >
-                Dashboard
-              </NextLink>
-            </NavbarItem>
-            <NavbarItem isActive={pathname === "/devices"}>
-              <NextLink 
-                className={`flex gap-2 ${pathname === "/devices" ? "text-primary" : "text-foreground"}`}
-                href="/devices"
-              >
-                Dispositivos
-              </NextLink>
-            </NavbarItem>
-            <NavbarItem isActive={pathname === "/content"}>
-              <NextLink 
-                className={`flex gap-2 ${pathname === "/content" ? "text-primary" : "text-foreground"}`}
-                href="/content"
-              >
-                Conteúdo
-              </NextLink>
-            </NavbarItem>
-          </NavbarContent>
-        </div>
+        <NavbarContent className="hidden sm:flex items-center h-full" justify="center">
+          <div className="flex h-10 gap-8 rounded-full bg-default-100 px-6 items-center">
+            {currentNavigation.map((item) => (
+              <NavbarItem key={item.href} isActive={pathname === item.href}>
+                <NextLink 
+                  className={`flex items-center gap-2 ${pathname === item.href ? "text-primary" : "text-foreground"}`}
+                  href={item.href}
+                >
+                  <Icon icon={item.icon} width={20} />
+                  {item.name}
+                </NextLink>
+              </NavbarItem>
+            ))}
+          </div>
+        </NavbarContent>
         <NavbarContent className="flex gap-2" justify="end">
           <NavbarItem className="hidden sm:flex">
             <Button 
@@ -188,35 +255,28 @@ export default function PanelLayout({ children }) {
           </NavbarItem>
         </NavbarContent>
         <NavbarMenu>
-          <NavbarMenuItem isActive={pathname === "/dashboard"}>
-            <NextLink 
-              className={`w-full ${pathname === "/dashboard" ? "text-primary" : "text-foreground"}`}
-              href="/dashboard"
-            >
-              Dashboard
-            </NextLink>
-          </NavbarMenuItem>
-          <NavbarMenuItem isActive={pathname === "/devices"}>
-            <NextLink 
-              className={`w-full ${pathname === "/devices" ? "text-primary" : "text-foreground"}`}
-              href="/devices"
-            >
-              Dispositivos
-            </NextLink>
-          </NavbarMenuItem>
-          <NavbarMenuItem isActive={pathname === "/content"}>
-            <NextLink 
-              className={`w-full ${pathname === "/content" ? "text-primary" : "text-foreground"}`}
-              href="/content"
-            >
-              Conteúdo
-            </NextLink>
-          </NavbarMenuItem>
+          {currentNavigation.map((item) => (
+            <NavbarMenuItem key={item.href} isActive={pathname === item.href}>
+              <NextLink 
+                className={`w-full ${pathname === item.href ? "text-primary" : "text-foreground"}`}
+                href={item.href}
+              >
+                {item.name}
+              </NextLink>
+            </NavbarMenuItem>
+          ))}
         </NavbarMenu>
       </Navbar>
       <main className="container mx-auto px-6 py-4">
         {children}
       </main>
+      
+      <LinkGoogleModal 
+        isOpen={showLinkGoogleModal}
+        onClose={dismissLinkGoogleModal}
+        onConfirm={handleConfirm}
+        isLoading={isLoading}
+      />
     </div>
   );
 }

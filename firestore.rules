@@ -2,18 +2,54 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function isOperator() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'operator';
+    }
+    
+    function hasAnyRole() {
+      return isAdmin() || isOperator();
+    }
 
-    // This rule allows anyone with your Firestore database reference to view, edit,
-    // and delete all data in your Firestore database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Firestore database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow write: if isAdmin();
+    }
+
+    // Groups collection
+    match /groups/{groupId} {
+      allow read: if hasAnyRole();
+      allow create, update: if hasAnyRole();
+      allow delete: if isAdmin();
+    }
+
+    // Devices collection
+    match /devices/{deviceId} {
+      allow read: if hasAnyRole();
+      allow create: if isAdmin();
+      allow update: if hasAnyRole();
+      allow delete: if isAdmin();
+    }
+
+    // Temporary media collection (used for generating IDs)
+    match /media_temp/{docId} {
+      allow read, write: if hasAnyRole();
+    }
+
+    // Deny access to all other collections by default
     match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2025, 2, 4);
+      allow read, write: if false;
     }
   }
 }

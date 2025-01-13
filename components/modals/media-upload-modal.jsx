@@ -219,6 +219,17 @@ export function MediaUploadModal({
                 description="Tempo que a imagem ficará em exibição antes de passar para o próximo conteúdo"
               />
             )}
+
+            <div className="p-3 bg-default-100 rounded-medium">
+              <p className="text-sm font-medium mb-2">Dimensões recomendadas:</p>
+              <div className="flex items-center gap-2 text-small text-default-500">
+                <Icon icon="solar:ruler-bold" />
+                <span>1920 x 1080 pixels (16:9)</span>
+              </div>
+              <p className="text-tiny text-default-400 mt-1">
+                Para melhor exibição, use imagens e vídeos nesta resolução
+              </p>
+            </div>
           </div>
         </ModalBody>
         <ModalFooter>
