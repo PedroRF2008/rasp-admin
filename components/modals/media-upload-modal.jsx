@@ -67,12 +67,17 @@ export function MediaUploadModal({
     setFile(selectedFile);
     setFileError("");
 
-    // Create preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreview(reader.result);
-    };
-    reader.readAsDataURL(selectedFile);
+    // Only create preview for images or small videos (less than 50MB)
+    if (selectedFile.type.startsWith('image/') || selectedFile.size < 50 * 1024 * 1024) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreview(reader.result);
+      };
+      reader.readAsDataURL(selectedFile);
+    } else {
+      // For large videos, just set preview to null but keep the file
+      setPreview(null);
+    }
   };
 
   const handleSubmit = () => {
@@ -183,13 +188,32 @@ export function MediaUploadModal({
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-2 py-8">
-                    <Icon icon="solar:upload-bold" className="text-4xl" />
-                    <div>
-                      <p>Clique para selecionar ou arraste um arquivo</p>
-                      <p className="text-small text-default-500">
-                        Formatos suportados: {Object.values(allowedTypes).join(', ')}
-                      </p>
-                    </div>
+                    {file ? (
+                      // Show file info when file is selected but no preview
+                      <div className="flex flex-col items-center gap-2">
+                        <Icon 
+                          icon={file.type.startsWith('video/') ? 'solar:videocamera-record-bold' : 'solar:gallery-wide-bold'} 
+                          className="text-4xl text-default-500" 
+                        />
+                        <div className="text-center">
+                          <p className="font-medium">{file.name}</p>
+                          <p className="text-small text-default-500">
+                            {(file.size / (1024 * 1024)).toFixed(2)} MB
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      // Default upload state
+                      <>
+                        <Icon icon="solar:upload-bold" className="text-4xl" />
+                        <div>
+                          <p>Clique para selecionar ou arraste um arquivo</p>
+                          <p className="text-small text-default-500">
+                            Formatos suportados: {Object.values(allowedTypes).join(', ')}
+                          </p>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
                 <input
