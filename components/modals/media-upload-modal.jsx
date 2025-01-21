@@ -58,9 +58,9 @@ export function MediaUploadModal({
       return;
     }
 
-    // Validate file size (max 100MB)
-    if (selectedFile.size > 100 * 1024 * 1024) {
-      setFileError("Arquivo muito grande (máximo 100MB)");
+    // Validate file size (max 1GB)
+    if (selectedFile.size > 1024 * 1024 * 1024) {
+      setFileError("Arquivo muito grande (máximo 1GB)");
       return;
     }
 
